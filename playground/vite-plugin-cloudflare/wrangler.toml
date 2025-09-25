@@ -6,3 +6,7 @@ assets = {}
 
 [vars]
 VALUE_FROM_CLOUDFLARE = "Hello from Cloudflare"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "namespace-id"

@@ -2561,12 +2561,43 @@ async function getPrerenderBuildAndHandler(
   serverBuildDirectory: string,
   serverBuildFile: string,
 ) {
+  const vite = getVite();
+  const previewServer = await vite.preview({
+    configFile: viteConfig.configFile,
+    preview: {
+      port: 0, // Use random available port
+    },
+    logLevel: "warn", // Reduce noise during prerendering
+  });
+
+  let baseUrl = previewServer.resolvedUrls?.local?.[0];
+  if (!baseUrl) {
+    throw new Error("Failed to start preview server for prerendering");
+  }
+
+  // Load build metadata (we still need prerender paths)
   let serverBuildPath = path.join(serverBuildDirectory, serverBuildFile);
   let build = await import(url.pathToFileURL(serverBuildPath).toString());
-  let { createRequestHandler: createHandler } = await import("react-router");
+
+  // Create handler that makes HTTP requests to preview server
+  const handler = async (request: Request): Promise<Response> => {
+    try {
+      const url = new URL(request.url);
+      url.port = new URL(baseUrl).port;
+      const req = new Request(url, request);
+      return await fetch(req);
+    } catch (e) {
+      console.error(`Preview server request failed for ${request.url}:`, e);
+      throw e;
+    }
+  };
+
   return {
     build: build as ServerBuild,
-    handler: createHandler(build, viteConfig.mode),
+    handler,
+    dispose: () => {
+      previewServer.httpServer.close();
+    },
   };
 }
 
@@ -2577,60 +2608,66 @@ async function handleSpaMode(
   serverBuildFile: string,
   clientBuildDirectory: string,
 ) {
-  let { build, handler } = await getPrerenderBuildAndHandler(
+  let { build, handler, dispose } = await getPrerenderBuildAndHandler(
     viteConfig,
     serverBuildDirectory,
     serverBuildFile,
   );
-  let request = new Request(`http://localhost${reactRouterConfig.basename}`, {
-    headers: {
-      // Enable SPA mode in the server runtime and only render down to the root
-      "X-React-Router-SPA-Mode": "yes",
-    },
-  });
-  let response = await handler(request);
-  let html = await response.text();
+  try {
+    let request = new Request(`http://localhost${reactRouterConfig.basename}`, {
+      headers: {
+        // Enable SPA mode in the server runtime and only render down to the root
+        "X-React-Router-SPA-Mode": "yes",
+      },
+    });
+    let response = await handler(request);
+    let html = await response.text();
 
-  // If the user prerendered `/`, then we write this out to a separate file
-  // they can serve. Otherwise, it can be the main entry point.
-  let isPrerenderSpaFallback = build.prerender.includes("/");
-  let filename = isPrerenderSpaFallback ? "__spa-fallback.html" : "index.html";
-  if (response.status !== 200) {
-    if (isPrerenderSpaFallback) {
+    // If the user prerendered `/`, then we write this out to a separate file
+    // they can serve. Otherwise, it can be the main entry point.
+    let isPrerenderSpaFallback = build.prerender.includes("/");
+    let filename = isPrerenderSpaFallback
+      ? "__spa-fallback.html"
+      : "index.html";
+    if (response.status !== 200) {
+      if (isPrerenderSpaFallback) {
+        throw new Error(
+          `Prerender: Received a ${response.status} status code from ` +
+            `\`entry.server.tsx\` while prerendering your \`${filename}\` file.\n` +
+            html,
+        );
+      } else {
+        throw new Error(
+          `SPA Mode: Received a ${response.status} status code from ` +
+            `\`entry.server.tsx\` while prerendering your \`${filename}\` file.\n` +
+            html,
+        );
+      }
+    }
+
+    if (
+      !html.includes("window.__reactRouterContext =") ||
+      !html.includes("window.__reactRouterRouteModules =")
+    ) {
       throw new Error(
-        `Prerender: Received a ${response.status} status code from ` +
-          `\`entry.server.tsx\` while prerendering your \`${filename}\` file.\n` +
-          html,
-      );
-    } else {
-      throw new Error(
-        `SPA Mode: Received a ${response.status} status code from ` +
-          `\`entry.server.tsx\` while prerendering your \`${filename}\` file.\n` +
-          html,
+        "SPA Mode: Did you forget to include `<Scripts/>` in your root route? " +
+          "Your pre-rendered HTML cannot hydrate without `<Scripts />`.",
       );
     }
-  }
 
-  if (
-    !html.includes("window.__reactRouterContext =") ||
-    !html.includes("window.__reactRouterRouteModules =")
-  ) {
-    throw new Error(
-      "SPA Mode: Did you forget to include `<Scripts/>` in your root route? " +
-        "Your pre-rendered HTML cannot hydrate without `<Scripts />`.",
-    );
-  }
-
-  // Write out the HTML file for the SPA
-  await writeFile(path.join(clientBuildDirectory, filename), html);
-  let prettyDir = path.relative(viteConfig.root, clientBuildDirectory);
-  let prettyPath = path.join(prettyDir, filename);
-  if (build.prerender.length > 0) {
-    viteConfig.logger.info(
-      `Prerender (html): SPA Fallback -> ${colors.bold(prettyPath)}`,
-    );
-  } else {
-    viteConfig.logger.info(`SPA Mode: Generated ${colors.bold(prettyPath)}`);
+    // Write out the HTML file for the SPA
+    await writeFile(path.join(clientBuildDirectory, filename), html);
+    let prettyDir = path.relative(viteConfig.root, clientBuildDirectory);
+    let prettyPath = path.join(prettyDir, filename);
+    if (build.prerender.length > 0) {
+      viteConfig.logger.info(
+        `Prerender (html): SPA Fallback -> ${colors.bold(prettyPath)}`,
+      );
+    } else {
+      viteConfig.logger.info(`SPA Mode: Generated ${colors.bold(prettyPath)}`);
+    }
+  } finally {
+    dispose();
   }
 }
 
@@ -2641,96 +2678,103 @@ async function handlePrerender(
   serverBuildPath: string,
   clientBuildDirectory: string,
 ) {
-  let { build, handler } = await getPrerenderBuildAndHandler(
+  let { build, handler, dispose } = await getPrerenderBuildAndHandler(
     viteConfig,
     serverBuildDirectory,
     serverBuildPath,
   );
 
-  let routes = createPrerenderRoutes(reactRouterConfig.routes);
-  for (let path of build.prerender) {
-    let matches = matchRoutes(routes, `/${path}/`.replace(/^\/\/+/, "/"));
-    if (!matches) {
-      throw new Error(
-        `Unable to prerender path because it does not match any routes: ${path}`,
+  try {
+    let routes = createPrerenderRoutes(reactRouterConfig.routes);
+    for (let path of build.prerender) {
+      let matches = matchRoutes(routes, `/${path}/`.replace(/^\/\/+/, "/"));
+      if (!matches) {
+        throw new Error(
+          `Unable to prerender path because it does not match any routes: ${path}`,
+        );
+      }
+    }
+
+    let buildRoutes = createPrerenderRoutes(build.routes);
+    for (let path of build.prerender) {
+      // Ensure we have a leading slash for matching
+      let matches = matchRoutes(
+        buildRoutes,
+        `/${path}/`.replace(/^\/\/+/, "/"),
       );
-    }
-  }
+      if (!matches) {
+        continue;
+      }
+      // When prerendering a resource route, we don't want to pass along the
+      // `.data` file since we want to prerender the raw Response returned from
+      // the loader.  Presumably this is for routes where a file extension is
+      // already included, such as `app/routes/items[.json].tsx` that will
+      // render into `/items.json`
+      let leafRoute = matches ? matches[matches.length - 1].route : null;
+      let manifestRoute = leafRoute ? build.routes[leafRoute.id]?.module : null;
+      let isResourceRoute =
+        manifestRoute && !manifestRoute.default && !manifestRoute.ErrorBoundary;
 
-  let buildRoutes = createPrerenderRoutes(build.routes);
-  for (let path of build.prerender) {
-    // Ensure we have a leading slash for matching
-    let matches = matchRoutes(buildRoutes, `/${path}/`.replace(/^\/\/+/, "/"));
-    if (!matches) {
-      continue;
-    }
-    // When prerendering a resource route, we don't want to pass along the
-    // `.data` file since we want to prerender the raw Response returned from
-    // the loader.  Presumably this is for routes where a file extension is
-    // already included, such as `app/routes/items[.json].tsx` that will
-    // render into `/items.json`
-    let leafRoute = matches ? matches[matches.length - 1].route : null;
-    let manifestRoute = leafRoute ? build.routes[leafRoute.id]?.module : null;
-    let isResourceRoute =
-      manifestRoute && !manifestRoute.default && !manifestRoute.ErrorBoundary;
-
-    if (isResourceRoute) {
-      invariant(leafRoute);
-      invariant(manifestRoute);
-      if (manifestRoute.loader) {
-        // Prerender a .data file for turbo-stream consumption
-        await prerenderData(
-          handler,
-          path,
-          [leafRoute.id],
-          clientBuildDirectory,
-          reactRouterConfig,
-          viteConfig,
-        );
-        // Prerender a raw file for external consumption
-        await prerenderResourceRoute(
-          handler,
-          path,
-          clientBuildDirectory,
-          reactRouterConfig,
-          viteConfig,
-        );
+      if (isResourceRoute) {
+        invariant(leafRoute);
+        invariant(manifestRoute);
+        if (manifestRoute.loader) {
+          // Prerender a .data file for turbo-stream consumption
+          await prerenderData(
+            handler,
+            path,
+            [leafRoute.id],
+            clientBuildDirectory,
+            reactRouterConfig,
+            viteConfig,
+          );
+          // Prerender a raw file for external consumption
+          await prerenderResourceRoute(
+            handler,
+            path,
+            clientBuildDirectory,
+            reactRouterConfig,
+            viteConfig,
+          );
+        } else {
+          viteConfig.logger.warn(
+            `⚠️ Skipping prerendering for resource route without a loader: ${leafRoute?.id}`,
+          );
+        }
       } else {
-        viteConfig.logger.warn(
-          `⚠️ Skipping prerendering for resource route without a loader: ${leafRoute?.id}`,
+        let hasLoaders = matches.some(
+          (m) => build.assets.routes[m.route.id]?.hasLoader,
         );
-      }
-    } else {
-      let hasLoaders = matches.some(
-        (m) => build.assets.routes[m.route.id]?.hasLoader,
-      );
-      let data: string | undefined;
-      if (!isResourceRoute && hasLoaders) {
-        data = await prerenderData(
+        let data: string | undefined;
+        if (!isResourceRoute && hasLoaders) {
+          data = await prerenderData(
+            handler,
+            path,
+            null,
+            clientBuildDirectory,
+            reactRouterConfig,
+            viteConfig,
+          );
+        }
+
+        await prerenderRoute(
           handler,
           path,
-          null,
           clientBuildDirectory,
           reactRouterConfig,
           viteConfig,
+          data
+            ? {
+                headers: {
+                  "X-React-Router-Prerender-Data": encodeURI(data),
+                },
+              }
+            : undefined,
         );
       }
-
-      await prerenderRoute(
-        handler,
-        path,
-        clientBuildDirectory,
-        reactRouterConfig,
-        viteConfig,
-        data
-          ? {
-              headers: {
-                "X-React-Router-Prerender-Data": encodeURI(data),
-              },
-            }
-          : undefined,
-      );
     }
+  } finally {
+    dispose();
   }
 }
 

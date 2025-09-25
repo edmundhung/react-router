@@ -1763,12 +1763,28 @@ export const reactRouterVitePlugin: ReactRouterVitePlugin = () => {
           if (isPrerenderingEnabled(ctx.reactRouterConfig)) {
             // If we have prerender routes, that takes precedence over SPA mode
             // which is ssr:false and only the root route being rendered
+
+            // Generate both server manifest and prerender paths (avoids importing server build)
+            const { reactRouterServerManifest } =
+              await generateReactRouterManifestsForBuild({
+                viteConfig,
+                routeIds: undefined, // Include all routes
+              });
+
+            const prerenderPaths = await getPrerenderPaths(
+              ctx.reactRouterConfig.prerender,
+              ctx.reactRouterConfig.ssr,
+              ctx.reactRouterConfig.routes,
+            );
+
             await handlePrerender(
               viteConfig,
               ctx.reactRouterConfig,
               serverBuildDirectory,
               getServerBuildFile(ssrViteManifest),
               clientBuildDirectory,
+              reactRouterServerManifest,
+              prerenderPaths,
             );
           }
 
@@ -2559,7 +2575,10 @@ async function getPrerenderBuildAndHandler(
   viteConfig: Vite.ResolvedConfig,
   serverBuildDirectory: string,
   serverBuildFile: string,
+  serverManifest?: ReactRouterManifest,
+  prerenderPaths?: string[],
 ) {
+  console.log("Starting preview server for prerendering...");
   const vite = getVite();
   const previewServer = await vite.preview({
     configFile: viteConfig.configFile,
@@ -2573,16 +2592,33 @@ async function getPrerenderBuildAndHandler(
   if (!baseUrl) {
     throw new Error("Failed to start preview server for prerendering");
   }
+  console.log("Preview server started:", baseUrl);
 
-  // Load build metadata (we still need prerender paths)
-  let serverBuildPath = path.join(serverBuildDirectory, serverBuildFile);
-  let build = await import(url.pathToFileURL(serverBuildPath).toString());
+  let build;
+
+  if (serverManifest && prerenderPaths) {
+    // Use provided server manifest and prerender paths instead of importing server build
+    console.log(
+      "Using provided server manifest and prerender paths for prerendering...",
+    );
+    build = {
+      assets: serverManifest,
+      prerender: prerenderPaths,
+      routes: serverManifest.routes,
+    };
+  } else {
+    // Fallback to original approach
+    let serverBuildPath = path.join(serverBuildDirectory, serverBuildFile);
+    console.log("Loading server build from:", serverBuildPath);
+    build = await import(url.pathToFileURL(serverBuildPath).toString());
+  }
 
   // Create handler that makes HTTP requests to preview server
   const handler = async (request: Request): Promise<Response> => {
     try {
       const url = new URL(request.url);
       url.port = new URL(baseUrl).port;
+      console.log(`Prerendering ${url}...`);
       const req = new Request(url, request);
       return await fetch(req);
     } catch (e) {
@@ -2676,16 +2712,20 @@ async function handlePrerender(
   serverBuildDirectory: string,
   serverBuildPath: string,
   clientBuildDirectory: string,
+  serverManifest: ReactRouterManifest,
+  prerenderPaths: string[],
 ) {
-  let { build, handler, dispose } = await getPrerenderBuildAndHandler(
+  let { handler, dispose } = await getPrerenderBuildAndHandler(
     viteConfig,
     serverBuildDirectory,
     serverBuildPath,
+    serverManifest,
+    prerenderPaths,
   );
 
   try {
     let routes = createPrerenderRoutes(reactRouterConfig.routes);
-    for (let path of build.prerender) {
+    for (let path of prerenderPaths) {
       let matches = matchRoutes(routes, `/${path}/`.replace(/^\/\/+/, "/"));
       if (!matches) {
         throw new Error(
@@ -2694,8 +2734,8 @@ async function handlePrerender(
       }
     }
 
-    let buildRoutes = createPrerenderRoutes(build.routes);
-    for (let path of build.prerender) {
+    let buildRoutes = createPrerenderRoutes(serverManifest.routes);
+    for (let path of prerenderPaths) {
       // Ensure we have a leading slash for matching
       let matches = matchRoutes(
         buildRoutes,
@@ -2710,14 +2750,18 @@ async function handlePrerender(
       // already included, such as `app/routes/items[.json].tsx` that will
       // render into `/items.json`
       let leafRoute = matches ? matches[matches.length - 1].route : null;
-      let manifestRoute = leafRoute ? build.routes[leafRoute.id]?.module : null;
+      let manifestRoute = leafRoute
+        ? serverManifest.routes[leafRoute.id]
+        : null;
       let isResourceRoute =
-        manifestRoute && !manifestRoute.default && !manifestRoute.ErrorBoundary;
+        manifestRoute &&
+        !manifestRoute.hasErrorBoundary &&
+        /** !manifestRoute.hasDefaultExport */ false;
 
       if (isResourceRoute) {
         invariant(leafRoute);
         invariant(manifestRoute);
-        if (manifestRoute.loader) {
+        if (manifestRoute.hasLoader) {
           // Prerender a .data file for turbo-stream consumption
           await prerenderData(
             handler,
@@ -2742,7 +2786,7 @@ async function handlePrerender(
         }
       } else {
         let hasLoaders = matches.some(
-          (m) => build.assets.routes[m.route.id]?.hasLoader,
+          (m) => serverManifest.routes[m.route.id]?.hasLoader,
         );
         let data: string | undefined;
         if (!isResourceRoute && hasLoaders) {

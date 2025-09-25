@@ -1,5 +1,6 @@
 import type { MetaFunction } from "react-router";
 import type { Route } from "./+types/_index";
+import { env } from "cloudflare:workers";
 
 export const meta: MetaFunction = () => {
   return [
@@ -19,7 +20,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   }
 
   return {
-    message: context.cloudflare.env.VALUE_FROM_CLOUDFLARE,
+    message: env.VALUE_FROM_CLOUDFLARE,
     value,
   };
 }

@@ -8,6 +8,7 @@
     "dev": "react-router dev",
     "build": "react-router build",
     "typegen": "wrangler types && react-router typegen",
+    "preview": "react-router build && vite preview",
     "typecheck": "pnpm typegen && tsc"
   },
   "dependencies": {

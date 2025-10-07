@@ -948,6 +948,7 @@ export const reactRouterVitePlugin: ReactRouterVitePlugin = () => {
         hasClientAction,
         hasClientLoader,
         hasClientMiddleware,
+        hasDefaultExport: sourceExports.includes("default"),
         hasErrorBoundary: sourceExports.includes("ErrorBoundary"),
         ...getReactRouterManifestBuildAssets(
           ctx,
@@ -1107,6 +1108,7 @@ export const reactRouterVitePlugin: ReactRouterVitePlugin = () => {
         hasClientLoader,
         hasClientMiddleware,
         hasErrorBoundary: sourceExports.includes("ErrorBoundary"),
+        hasDefaultExport: sourceExports.includes("default"),
         imports: [],
       };
     }
@@ -2539,6 +2541,7 @@ async function getRouteMetadata(
     hasClientLoader: sourceExports.includes("clientLoader"),
     hasClientMiddleware: sourceExports.includes("clientMiddleware"),
     hasErrorBoundary: sourceExports.includes("ErrorBoundary"),
+    hasDefaultExport: sourceExports.includes("default"),
     imports: [],
   };
   return info;
@@ -2718,7 +2721,7 @@ async function handlePrerender(
       let isResourceRoute =
         manifestRoute &&
         !manifestRoute.hasErrorBoundary &&
-        /** !manifestRoute.hasDefaultExport */ false;
+        !manifestRoute.hasDefaultExport;
 
       if (isResourceRoute) {
         invariant(leafRoute);

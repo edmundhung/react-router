@@ -1615,6 +1615,42 @@ export const reactRouterVitePlugin: ReactRouterVitePlugin = () => {
           }
         };
       },
+      configurePreviewServer(previewServer) {
+        // Return a post-hook function to register middleware AFTER other plugins.
+        // This ensures that if another plugin (like @cloudflare/vite-plugin)
+        // registers middleware in the hook body, it will run before ours.
+        // This makes React Router's preview middleware a fallback that only
+        // handles requests when no other plugin has handled them.
+        return () => {
+          previewServer.middlewares.use(async (req, res, next) => {
+            try {
+              let serverBuildDirectory = getServerBuildDirectory(
+                ctx.reactRouterConfig,
+              );
+              let serverBuildPath = path.join(serverBuildDirectory, "index.js");
+              let build = await import(
+                url.pathToFileURL(serverBuildPath).toString()
+              );
+              let handler = createRequestHandler(build, "production");
+              let nodeHandler: NodeRequestHandler = async (
+                nodeReq,
+                nodeRes,
+              ) => {
+                let req = fromNodeRequest(nodeReq, nodeRes);
+                let res = await handler(
+                  req,
+                  await reactRouterDevLoadContext(req),
+                );
+
+                await sendResponse(nodeRes, res);
+              };
+              await nodeHandler(req, res);
+            } catch (error) {
+              next(error);
+            }
+          });
+        };
+      },
       writeBundle: {
         // After the SSR build is finished, we inspect the Vite manifest for
         // the SSR build and move server-only assets to client assets directory
@@ -2585,7 +2621,6 @@ async function getPrerenderHandler(viteConfig: Vite.ResolvedConfig) {
     preview: {
       port: 0, // Use random available port
     },
-    logLevel: "warn", // Reduce noise during prerendering
   });
 
   let baseUrl = previewServer.resolvedUrls?.local?.[0];

@@ -8,6 +8,7 @@
     "build": "react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
+    "preview": "react-router build && vite preview",
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {

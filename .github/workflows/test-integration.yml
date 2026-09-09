@@ -43,7 +43,7 @@ permissions:
 jobs:
   changes:
     name: "Check Changed Files"
-    if: github.repository == 'remix-run/react-router'
+    if: github.repository == 'remix-run/react-router' || github.repository == 'edmundhung/react-router'
     runs-on: ubuntu-latest
     outputs:
       type: ${{ steps.suites.outputs.type }}
@@ -88,7 +88,7 @@ jobs:
   integration-chromium:
     name: "Chromium (24)"
     needs: changes
-    if: github.repository == 'remix-run/react-router'
+    if: github.repository == 'remix-run/react-router' || github.repository == 'edmundhung/react-router'
     uses: ./.github/workflows/test-integration-run.yml
     with:
       os: "ubuntu-latest"
@@ -99,7 +99,7 @@ jobs:
   integration-chromium-node-22:
     name: "Chromium (22)"
     needs: changes
-    if: github.repository == 'remix-run/react-router' && contains(fromJSON('["dev", "full"]'), needs.changes.outputs.type)
+    if: (github.repository == 'remix-run/react-router' || github.repository == 'edmundhung/react-router') && contains(fromJSON('["dev", "full"]'), needs.changes.outputs.type)
     uses: ./.github/workflows/test-integration-run.yml
     with:
       os: "ubuntu-latest"
@@ -110,7 +110,7 @@ jobs:
   integration-firefox:
     name: "Firefox (24)"
     needs: changes
-    if: github.repository == 'remix-run/react-router' && contains(fromJSON('["dev", "full"]'), needs.changes.outputs.type)
+    if: (github.repository == 'remix-run/react-router' || github.repository == 'edmundhung/react-router') && contains(fromJSON('["dev", "full"]'), needs.changes.outputs.type)
     uses: ./.github/workflows/test-integration-run.yml
     with:
       os: "ubuntu-latest"
@@ -121,7 +121,7 @@ jobs:
   integration-msedge:
     name: "Edge (24)"
     needs: changes
-    if: github.repository == 'remix-run/react-router' && contains(fromJSON('["dev", "full"]'), needs.changes.outputs.type)
+    if: (github.repository == 'remix-run/react-router' || github.repository == 'edmundhung/react-router') && contains(fromJSON('["dev", "full"]'), needs.changes.outputs.type)
     uses: ./.github/workflows/test-integration-run.yml
     with:
       os: "windows-latest"
@@ -133,7 +133,7 @@ jobs:
   integration-webkit:
     name: "WebKit (24)"
     needs: changes
-    if: github.repository == 'remix-run/react-router' && contains(fromJSON('["dev", "full"]'), needs.changes.outputs.type)
+    if: (github.repository == 'remix-run/react-router' || github.repository == 'edmundhung/react-router') && contains(fromJSON('["dev", "full"]'), needs.changes.outputs.type)
     uses: ./.github/workflows/test-integration-run.yml
     with:
       os: "macos-latest"
@@ -144,7 +144,7 @@ jobs:
   integration-firefox-node-22:
     name: "Firefox (22)"
     needs: changes
-    if: github.repository == 'remix-run/react-router' && needs.changes.outputs.type == 'full'
+    if: (github.repository == 'remix-run/react-router' || github.repository == 'edmundhung/react-router') && needs.changes.outputs.type == 'full'
     uses: ./.github/workflows/test-integration-run.yml
     with:
       os: "ubuntu-latest"
@@ -155,7 +155,7 @@ jobs:
   integration-webkit-node-22:
     name: "WebKit (22)"
     needs: changes
-    if: github.repository == 'remix-run/react-router' && needs.changes.outputs.type == 'full'
+    if: (github.repository == 'remix-run/react-router' || github.repository == 'edmundhung/react-router') && needs.changes.outputs.type == 'full'
     uses: ./.github/workflows/test-integration-run.yml
     with:
       os: "macos-latest"

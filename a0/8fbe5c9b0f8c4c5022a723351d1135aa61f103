@@ -1,0 +1,19 @@
+packages/react-router-dev/vite/plugin.ts
+  s_85c7ed40533c75::t_ab126cdd32eb09 1812
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a08fbe5c9b0f8c4c5022a723351d1135aa61f103",
+  "prompts": {},
+  "sessions": {
+    "s_85c7ed40533c75": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac4bf3c-d1d8-4443-bef4-74c8d80cd467",
+        "model": "unknown"
+      },
+      "human_author": "Edmund Hung <edmund@cloudflare.com>"
+    }
+  }
+}

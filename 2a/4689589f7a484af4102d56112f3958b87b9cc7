@@ -1,0 +1,19 @@
+integration/vite-server-bundles-test.ts
+  s_85c7ed40533c75::t_eb0e6b21ddf484 12,509-566
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2a4689589f7a484af4102d56112f3958b87b9cc7",
+  "prompts": {},
+  "sessions": {
+    "s_85c7ed40533c75": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac4bf3c-d1d8-4443-bef4-74c8d80cd467",
+        "model": "unknown"
+      },
+      "human_author": "Edmund Hung <edmund@cloudflare.com>"
+    }
+  }
+}

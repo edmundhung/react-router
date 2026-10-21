@@ -1,0 +1,19 @@
+integration/vite-plugin-cloudflare-test.ts
+  s_85c7ed40533c75::t_f8745bbf842bc5 4-5,222-233,244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f7bb55d7d46047743f88f8f71b125191ed7b311f",
+  "prompts": {},
+  "sessions": {
+    "s_85c7ed40533c75": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac4bf3c-d1d8-4443-bef4-74c8d80cd467",
+        "model": "unknown"
+      },
+      "human_author": "Edmund Hung <edmund@cloudflare.com>"
+    }
+  }
+}

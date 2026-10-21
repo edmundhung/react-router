@@ -1,0 +1,19 @@
+packages/react-router-dev/__tests__/prerender-resolved-url-test.ts
+  s_85c7ed40533c75::t_a71ceed324f809 132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "dc16e7b18ac2a4c1a892ed5febee13d71bc927eb",
+  "prompts": {},
+  "sessions": {
+    "s_85c7ed40533c75": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac4bf3c-d1d8-4443-bef4-74c8d80cd467",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edmund Hung <edmund@cloudflare.com>"
+    }
+  }
+}
